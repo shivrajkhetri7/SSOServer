@@ -10,9 +10,9 @@ const Callback = () => {
   useEffect(() => {
     const handleCallback = async () => {
       const params = new URLSearchParams(location.search);
-      console.log('params',params)
       const code = params.get('code');
       const error = params.get('error');
+      const state = params.get('state');
 
       if (error) {
         toast.error(error);
@@ -22,41 +22,51 @@ const Callback = () => {
 
       if (code) {
         try {
-          // Retrieve the code_verifier from sessionStorage
+          // Retrieve the code_verifier and tenant ID from sessionStorage
           const codeVerifier = sessionStorage.getItem('pkce_verifier');
+          const tenantId = sessionStorage.getItem('x_tenant_id');
 
-          // if (!codeVerifier) {
-          //   toast.error('PKCE verifier missing from session');
-          //   return navigate('/');
-          // }
+          const response = await axios.post(
+            'https://localhost:4004/api/v1/oauth/token',
+            {
+              code,
+              grant_type: 'authorization_code',
+              client_id: import.meta.env.VITE_CLIENT_ID,
+              redirect_uri: window.location.origin + '/callback',
+              code_verifier: codeVerifier,
+              state, // Include state in the request
+            },
+            {
+              withCredentials: true,
+              headers: {
+                'x-tenant-id': import.meta.env.VITE_CLIENT_ID || '', // Add tenant ID to headers
+                'Content-Type': 'application/json',
+              },
+            }
+          );
 
-          const response = await axios.post('http://localhost:3000/oauth/token', {
-            code,
-            grant_type: 'authorization_code',
-            client_id: import.meta.env.VITE_CLIENT_ID,
-            redirect_uri: window.location.origin + '/callback',
-            code_verifier: codeVerifier,
-          }, {
-            withCredentials: true,
-          });
+          // Clean up session storage
+          sessionStorage.removeItem('pkce_verifier');
+          sessionStorage.removeItem('x_tenant_id');
 
-          sessionStorage.removeItem('pkce_verifier'); 
-
+          // Store tokens and user data
           localStorage.setItem('access_token', response.data.access_token);
           localStorage.setItem('refresh_token', response.data.refresh_token);
+          localStorage.setItem('id_token',response.data.id_token)
           localStorage.setItem('user', JSON.stringify(response.data.user));
 
           navigate('/dashboard');
         } catch (err) {
           console.error('Callback error:', err);
-          toast.error('Authentication failed');
+          toast.error(err.response?.data?.error_description || 'Authentication failed');
           navigate('/');
         }
       }
     };
 
     handleCallback();
-  }, []);
+
+  }, [location, navigate]);
 
   return <div>Processing authentication...</div>;
 };
